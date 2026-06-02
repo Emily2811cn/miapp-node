@@ -51,3 +51,22 @@ app.delete('/productos/:id', async (req, res) => {
 
   res.json({ mensaje: 'Producto eliminado', producto: result.rows[0] });
 });
+// Ruta GET con salida en HTML
+app.get('/productos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM productos');
+    let html = `
+      <h1>Inventario de Productos</h1>
+      <table border="1" cellpadding="5">
+        <tr><th>ID</th><th>Nombre</th><th>Precio</th></tr>
+    `;
+    result.rows.forEach(p => {
+      html += `<tr><td>${p.id}</td><td>${p.nombre}</td><td>${p.precio}</td></tr>`;
+    });
+    html += `</table>`;
+    res.send(html);
+  } catch (err) {
+    res.status(500).send('Error al obtener productos');
+  }
+});
+
