@@ -1,66 +1,53 @@
 const express = require('express');
+const { Pool } = require('pg');
 const app = express();
 
-// Middleware para parsear JSON
 app.use(express.json());
 
-// Middleware de logging simple
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
+// Conexión a PostgreSQL usando la variable de entorno
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false } // necesario en Render
 });
 
-// Puerto asignado por Render
+// Crear tabla si no existe
+pool.query(`
+  CREATE TABLE IF NOT EXISTS productos (
+    id SERIAL PRIMARY KEY,
+    nombre TEXT,
+    precio NUMERIC
+  )
+`);
+
+// Ruta para obtener productos desde la BD
+app.get('/productos', async (req, res) => {
+  const result = await pool.query('SELECT * FROM productos');
+  res.json(result.rows);
+});
+
+// Ruta para agregar producto a la BD
+app.post('/productos', async (req, res) => {
+  const { nombre, precio } = req.body;
+  const result = await pool.query(
+    'INSERT INTO productos (nombre, precio) VALUES ($1, $2) RETURNING *',
+    [nombre, precio]
+  );
+  res.status(201).json(result.rows[0]);
+});
+
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+// Eliminar producto por ID
+app.delete('/productos/:id', async (req, res) => {
+  const { id } = req.params;
+  const result = await pool.query(
+    'DELETE FROM productos WHERE id = $1 RETURNING *',
+    [id]
+  );
 
-// Ruta principal
-app.get('/', (req, res) => {
-  res.send('¡Bienvenido a mi aplicación Node.js en Render!');
-});
-
-// Ruta de información
-app.get('/info', (req, res) => {
-  res.json({
-    app: 'Demo Node.js',
-    version: '1.0.0',
-    autor: 'Emily Cruz',
-    plataforma: 'Render (PaaS)'
-  });
-});
-
-// Ruta tipo API para simular base de datos
-let productos = [
-  { id: 1, nombre: 'Laptop', precio: 1200 },
-  { id: 2, nombre: 'Mouse', precio: 25 },
-  { id: 3, nombre: 'Teclado', precio: 45 }
-];
-
-// Obtener todos los productos
-app.get('/productos', (req, res) => {
-  res.json(productos);
-});
-
-// Agregar un producto
-app.post('/productos', (req, res) => {
-  const nuevoProducto = {
-    id: productos.length + 1,
-    nombre: req.body.nombre,
-    precio: req.body.precio
-  };
-  productos.push(nuevoProducto);
-  res.status(201).json(nuevoProducto);
-});
-
-// Buscar producto por ID
-app.get('/productos/:id', (req, res) => {
-  const producto = productos.find(p => p.id == req.params.id);
-  if (!producto) {
-    return res.status(404).json({ error: 'Producto no encontrado' });
+  if (result.rowCount === 0) {
+    return res.status(404).json({ mensaje: 'Producto no encontrado' });
   }
-  res.json(producto);
-});
 
-// Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
+  res.json({ mensaje: 'Producto eliminado', producto: result.rows[0] });
 });
